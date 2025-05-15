@@ -1,0 +1,32 @@
+{
+  "A": {
+    "eval_results": {
+      "eval_loss": 0.9416748881340027,
+      "eval_runtime": 5.9184,
+      "eval_samples_per_second": 115.233,
+      "eval_steps_per_second": 14.531,
+      "epoch": 4.947368421052632
+    },
+    "perplexity": 2.56427269352988
+  },
+  "B": {
+    "eval_results": {
+      "eval_loss": 0.9450476169586182,
+      "eval_runtime": 5.9921,
+      "eval_samples_per_second": 113.816,
+      "eval_steps_per_second": 14.352,
+      "epoch": 4.947368421052632
+    },
+    "perplexity": 2.572935891053319
+  },
+  "C": {
+    "eval_results": {
+      "eval_loss": 0.9107547998428345,
+      "eval_runtime": 5.9169,
+      "eval_samples_per_second": 115.263,
+      "eval_steps_per_second": 14.535,
+      "epoch": 4.9501466275659824
+    },
+    "perplexity": 2.4861984075082515
+  }
+}
