@@ -175,3 +175,4 @@ cython_debug/
 
 riscv_model
 .DS_Store
+ratings.db
