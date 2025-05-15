@@ -30,6 +30,8 @@ git clone https://github.com/GNbros/Rizz-V_AI-Enable
 cd Rizz-V_AI-Enable
 ```
 
+---
+
 ### 2. Install Dependencies
 ```bash
 # Install Python dependencies
@@ -39,6 +41,9 @@ pip install -r requirements.txt
 cd rizz-v
 npm install
 ```
+
+---
+
 ### 3. Generate the Model
 Open the Jupyter Notebook:
 ```angular2html
@@ -54,6 +59,8 @@ make sure path is correct in `Rizz-V_AI-Enable`
 uvicorn main:app --reload
 ```
 
+---
+
 ### 5. Start the VS Code Extension
 Open the `rizz-v` directory in VS Code 
 ```angular2html
@@ -62,6 +69,9 @@ open .
 ```
 and press `F5` to start the extension in a new window.
 This will launch the extension and connect it to the FastAPI backend.
+
+---
+
 ### 6. Test the Extension
 Open a `.S` or `.asm` file and start typing.
 You should see AI-powered code completions based on the context of your code.
