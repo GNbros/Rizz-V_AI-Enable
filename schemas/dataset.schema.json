@@ -1,0 +1,87 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://github.com/GNbros/Rizz-V_AI-Enable/schemas/dataset.schema.json",
+    "title": "RV32IM Dataset Record",
+    "description": "A single training/evaluation record for the RV32IM assembly LLM pipeline.",
+    "type": "object",
+    "required": [
+        "mode",
+        "source_file",
+        "text"
+    ],
+    "properties": {
+        "mode": {
+            "type": "string",
+            "enum": [
+                "causal",
+                "fim",
+                "block",
+                "function"
+            ],
+            "description": "Dataset mode that determines which fields are required."
+        },
+        "source_file": {
+            "type": "string",
+            "description": "Original .S filename this record was derived from."
+        },
+        "text": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The full assembly text for causal/block modes, or the concatenated FIM sequence for fim mode."
+        },
+        "prefix": {
+            "type": "string",
+            "description": "FIM prefix (required when mode=fim)."
+        },
+        "suffix": {
+            "type": "string",
+            "description": "FIM suffix (required when mode=fim)."
+        },
+        "middle": {
+            "type": "string",
+            "description": "FIM middle / target (required when mode=fim)."
+        },
+        "signature": {
+            "type": "string",
+            "description": "Function signature (required when mode=function)."
+        },
+        "constraints": {
+            "type": "string",
+            "description": "Target constraints, e.g. 'rv32im, ilp32' (required when mode=function)."
+        }
+    },
+    "allOf": [
+        {
+            "if": {
+                "properties": {
+                    "mode": {
+                        "const": "fim"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "prefix",
+                    "suffix",
+                    "middle"
+                ]
+            }
+        },
+        {
+            "if": {
+                "properties": {
+                    "mode": {
+                        "const": "function"
+                    }
+                }
+            },
+            "then": {
+                "required": [
+                    "signature",
+                    "constraints"
+                ]
+            }
+        }
+    ],
+    "additionalProperties": false
+}

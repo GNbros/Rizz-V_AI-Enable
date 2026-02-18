@@ -1,0 +1,18 @@
+# Training config for Salesforce/codegen-350M-multi
+# Shared constants (max_seq_len, tokens) come from configs/dataset.yaml
+# Schema: schemas/train_config.schema.json
+
+base_model: Salesforce/codegen-350M-multi
+dataset: data/causal/train.jsonl
+val_dataset: data/causal/val.jsonl
+output_dir: outputs/
+epochs: 5
+batch_size: 8
+lr: 5.0e-5
+seed: 42
+gradient_accumulation_steps: 1
+warmup_steps: 100
+weight_decay: 0.01
+fp16: false
+push_to_hub: false
+hub_repo: GNbros/rizz-v-codegen-350M-multi

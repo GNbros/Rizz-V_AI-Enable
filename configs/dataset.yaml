@@ -1,0 +1,235 @@
+# ============================================================================
+# RV32IM Dataset Pipeline – Master Configuration
+# ============================================================================
+# Single source of truth for all tokens, paths, seeds, and tunables.
+# Every script reads this file via --config flag.
+#
+# CLI usage examples:
+#   python scripts/normalize_asm.py --config configs/dataset.yaml
+#   python scripts/split_by_file.py --config configs/dataset.yaml
+#   python scripts/build_dataset.py --config configs/dataset.yaml
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# Paths  (relative to project root)
+# ---------------------------------------------------------------------------
+paths:
+  raw_input: "riscv_dataset.txt"                    # input: monolithic .S dump
+  normalized_dir: "data/processed/normalized"       # output: one .S per snippet
+  splits_dir: "data/processed/splits"               # output: {train,val,test}_files.txt
+  dataset_dir: "data/processed/dataset"             # output: {train,val,test}.jsonl + manifest.json
+
+# ---------------------------------------------------------------------------
+# Determinism
+# ---------------------------------------------------------------------------
+seed: 42                                            # global seed; every RNG is derived from this
+
+# ---------------------------------------------------------------------------
+# Normalization  (normalize_asm.py)
+# ---------------------------------------------------------------------------
+normalize:
+  strip_comments: true            # remove # line comments (but keep #include / #define)
+  strip_block_comments: true      # remove /* ... */ comments
+  collapse_blank_lines: true      # runs of blank lines → single blank line
+  indent_spaces: 2                # re-indent to N spaces (0 = leave as-is)
+  register_alias_direction: "abi" # "abi" → x0→zero, x1→ra …  |  "xreg" → zero→x0 …
+
+# ---------------------------------------------------------------------------
+# File Split  (split_by_file.py)
+# ---------------------------------------------------------------------------
+split:
+  train: 0.80
+  val:   0.10
+  test:  0.10
+
+# ---------------------------------------------------------------------------
+# Special Tokens  (shared across ALL agents & scripts)
+# ---------------------------------------------------------------------------
+# ⚠ BREAKING-CHANGE NOTE: if any token is renamed or removed, notify all
+#   downstream agents (Training, Evaluation) and bump this section's version.
+special_tokens:
+  version: 1                       # increment on any token change
+  fim_prefix:   "<fim_prefix>"
+  fim_suffix:   "<fim_suffix>"
+  fim_middle:   "<fim_middle>"
+  block_prefix: "<block_prefix>"
+  block_end:    "<block_end>"
+  task_open:    "<task>"
+  task_close:   "</task>"
+  asm_open:     "<asm>"
+  eof_func:     "<eof_func>"
+
+# ---------------------------------------------------------------------------
+# Mode Mixing  (build_dataset.py)
+# ---------------------------------------------------------------------------
+# Ratios must sum to 1.0.  Each snippet is assigned ONE mode per draw.
+modes:
+  causal:   0.40
+  fim:      0.30
+  block:    0.20
+  function: 0.10
+
+# ---------------------------------------------------------------------------
+# FIM parameters
+# ---------------------------------------------------------------------------
+fim:
+  min_prefix_lines: 1              # minimum prefix lines before split
+  min_suffix_lines: 1              # minimum suffix lines after split
+
+# ---------------------------------------------------------------------------
+# Block parameters
+# ---------------------------------------------------------------------------
+block:
+  min_prefix_lines: 2              # minimum lines in prefix
+  max_prefix_ratio: 0.8            # prefix cannot exceed 80% of snippet
+
+# ---------------------------------------------------------------------------
+# Function-level parameters
+# ---------------------------------------------------------------------------
+function:
+  label_pattern: "^[a-zA-Z_][a-zA-Z0-9_]*:"  # regex to detect function labels
+  include_directives: true                     # include .globl / .type in signature
+
+# ---------------------------------------------------------------------------
+# JSONL Record Schema  (output of build_dataset.py)
+# ---------------------------------------------------------------------------
+# Each line in {train,val,test}.jsonl is a JSON object:
+#
+#   {
+#     "text": "<string>",            # the training text (with special tokens)
+#     "meta": {
+#       "file":       "<string>",    # source normalized filename
+#       "function":   "<string>",    # function/label name or null
+#       "span_lines": [<int>,<int>], # [start, end] line range in normalized file
+#       "mode":       "<string>"     # one of: causal | fim | block | function
+#     }
+#   }
+#
+# Manifest schema  (manifest.json):
+#
+#   {
+#     "seed": <int>,
+#     "created_at": "<ISO-8601>",
+#     "splits": {
+#       "train": {"total": <int>, "causal": <int>, "fim": <int>, "block": <int>, "function": <int>},
+#       "val":   { ... },
+#       "test":  { ... }
+#     }
+#   }
+
+# ---------------------------------------------------------------------------
+# RV32IM Opcodes  (single source of truth – used by eval & lint scripts)
+# ---------------------------------------------------------------------------
+rv32im_opcodes:
+  # RV32I base
+  - lui
+  - auipc
+  - jal
+  - jalr
+  - beq
+  - bne
+  - blt
+  - bge
+  - bltu
+  - bgeu
+  - lb
+  - lh
+  - lw
+  - lbu
+  - lhu
+  - sb
+  - sh
+  - sw
+  - addi
+  - slti
+  - sltiu
+  - xori
+  - ori
+  - andi
+  - slli
+  - srli
+  - srai
+  - add
+  - sub
+  - sll
+  - slt
+  - sltu
+  - xor
+  - srl
+  - sra
+  - or
+  - and
+  - fence
+  - ecall
+  - ebreak
+  # RV32M multiply extension
+  - mul
+  - mulh
+  - mulhsu
+  - mulhu
+  - div
+  - divu
+  - rem
+  - remu
+  # Common pseudo-instructions
+  - nop
+  - li
+  - la
+  - mv
+  - not
+  - neg
+  - seqz
+  - snez
+  - sltz
+  - sgtz
+  - j
+  - jr
+  - ret
+  - call
+  - tail
+
+# ---------------------------------------------------------------------------
+# ABI Lint Constants  (used by scripts/abi_lint.py)
+# ---------------------------------------------------------------------------
+callee_saved_regs:
+  - s0
+  - s1
+  - s2
+  - s3
+  - s4
+  - s5
+  - s6
+  - s7
+  - s8
+  - s9
+  - s10
+  - s11
+
+branch_instructions:
+  - beq
+  - bne
+  - blt
+  - bge
+  - bltu
+  - bgeu
+  - j
+  - jal
+  - bnez
+  - beqz
+  - blez
+  - bgez
+  - bltz
+  - bgtz
+
+# ---------------------------------------------------------------------------
+# Evaluation Parameters  (Rule H5: Deterministic Eval)
+# ---------------------------------------------------------------------------
+# These values are logged verbatim in eval_results/<run_id>.json -> eval_params.
+# Two runs with the same checkpoint + this config MUST produce identical results.
+eval:
+  seed: 42                     # random seed for all eval generation
+  temperature: 0.0             # 0.0 = greedy (deterministic for text metrics)
+  top_p: 1.0                   # nucleus sampling parameter
+  max_new_tokens: 256          # max tokens to generate per eval sample
+  decoding: greedy              # greedy | sampling (must match temperature)
+  num_samples_pass_k: 5        # number of samples for pass@k (v1)

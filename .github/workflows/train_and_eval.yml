@@ -1,0 +1,334 @@
+# ==============================================================================
+# train_and_eval.yml — Build dataset → Train (or skip) → Evaluate → Publish
+# ==============================================================================
+#
+# I/O Schema:
+#   Inputs (workflow_dispatch):
+#     skip_training:  bool   — skip training, use existing model (default: false)
+#     model_name:     string — base HF model id (default: Salesforce/codegen-350M-multi)
+#     hf_repo:        string — target HF repo (default: ${{ github.repository_owner }}/rizz-v-model)
+#     eval_seed:      string — deterministic seed for evaluation (default: "42")
+#
+#   Outputs (artifacts):
+#     eval-metrics/   — metrics.json, error_histogram.json
+#     eval-logs/      — eval.log, assemble.log
+#     model-checkpoint/ — trained model (if training ran)
+#
+# Secrets required:
+#   HF_TOKEN — Hugging Face write-access token
+# ==============================================================================
+
+name: Train & Evaluate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+      - 'configs/**'
+      - 'docker/**'
+      - 'requirements.txt'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      skip_training:
+        description: 'Skip training (use existing model)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+      model_name:
+        description: 'Base HF model name'
+        required: false
+        default: 'Salesforce/codegen-350M-multi'
+        type: string
+      hf_repo:
+        description: 'Target HF Hub repo'
+        required: false
+        default: ''
+        type: string
+      eval_seed:
+        description: 'Evaluation random seed (determinism)'
+        required: false
+        default: '42'
+        type: string
+
+env:
+  DOCKER_IMAGE: rizz-v-eval
+  HF_REPO: ${{ inputs.hf_repo || format('{0}/rizz-v-model', github.repository_owner) }}
+  MODEL_NAME: ${{ inputs.model_name || 'Salesforce/codegen-350M-multi' }}
+  EVAL_SEED: ${{ inputs.eval_seed || '42' }}
+  PYTHONHASHSEED: ${{ inputs.eval_seed || '42' }}
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Build Docker image
+  # ---------------------------------------------------------------------------
+  build-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build eval image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile.eval
+          tags: ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Verify toolchain
+        run: |
+          docker run --rm ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+            -c "riscv64-unknown-elf-gcc --version && python --version"
+
+      - name: Save image
+        run: docker save ${{ env.DOCKER_IMAGE }}:${{ github.sha }} -o /tmp/eval-image.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-image
+          path: /tmp/eval-image.tar
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Train (conditional)
+  # ---------------------------------------------------------------------------
+  train:
+    needs: build-image
+    if: ${{ inputs.skip_training != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download image
+        uses: actions/download-artifact@v4
+        with:
+          name: eval-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/eval-image.tar
+
+      - name: Run training
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -e PYTHONHASHSEED=${{ env.EVAL_SEED }} \
+            -e HF_TOKEN=${{ secrets.HF_TOKEN }} \
+            -w /app \
+            ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+            -c "python scripts/train.py \
+                  --model-name '${{ env.MODEL_NAME }}' \
+                  --seed ${{ env.EVAL_SEED }} \
+                  --output-dir /app/outputs/model \
+                  2>&1 | tee /app/outputs/train.log"
+
+      - name: Upload model checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-checkpoint
+          path: outputs/model/
+          retention-days: 30
+
+      - name: Upload training log
+        uses: actions/upload-artifact@v4
+        with:
+          name: train-logs
+          path: outputs/train.log
+          retention-days: 30
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Evaluate
+  # ---------------------------------------------------------------------------
+  evaluate:
+    needs: [build-image, train]
+    if: ${{ always() && needs.build-image.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download image
+        uses: actions/download-artifact@v4
+        with:
+          name: eval-image
+          path: /tmp
+
+      - name: Load image
+        run: docker load -i /tmp/eval-image.tar
+
+      - name: Download model (if training ran)
+        if: ${{ needs.train.result == 'success' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: model-checkpoint
+          path: outputs/model/
+
+      - name: Run text metrics (perplexity, token accuracy, opcode accuracy)
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -e PYTHONHASHSEED=${{ env.EVAL_SEED }} \
+            -w /app \
+            ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+            -c "python scripts/eval_text.py \
+                  --model-dir /app/outputs/model \
+                  --model-name '${{ env.MODEL_NAME }}' \
+                  --seed ${{ env.EVAL_SEED }} \
+                  --output /app/outputs/metrics/text_metrics.json \
+                  2>&1 | tee /app/outputs/logs/eval_text.log"
+
+      - name: Run assemble-in-context evaluation
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -e PYTHONHASHSEED=${{ env.EVAL_SEED }} \
+            -w /app \
+            ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+            -c "python scripts/eval_assemble.py \
+                  --model-dir /app/outputs/model \
+                  --model-name '${{ env.MODEL_NAME }}' \
+                  --gcc riscv64-unknown-elf-gcc \
+                  --march rv32im --mabi ilp32 \
+                  --seed ${{ env.EVAL_SEED }} \
+                  --output /app/outputs/metrics/assemble_metrics.json \
+                  2>&1 | tee /app/outputs/logs/eval_assemble.log"
+
+      - name: Run pass@k evaluation
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -e PYTHONHASHSEED=${{ env.EVAL_SEED }} \
+            -w /app \
+            ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+            -c "python scripts/eval_passk.py \
+                  --model-dir /app/outputs/model \
+                  --model-name '${{ env.MODEL_NAME }}' \
+                  --k 1 5 \
+                  --seed ${{ env.EVAL_SEED }} \
+                  --output /app/outputs/metrics/passk_metrics.json \
+                  2>&1 | tee /app/outputs/logs/eval_passk.log"
+
+      - name: Merge metrics
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -w /app \
+            ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+            -c "python -c \"
+          import json, glob, pathlib
+          merged = {'run_tag': 'run-${{ github.run_number }}',
+                    'seed': ${{ env.EVAL_SEED }},
+                    'model_name': '${{ env.MODEL_NAME }}',
+                    'commit_sha': '${{ github.sha }}'}
+          for f in sorted(glob.glob('/app/outputs/metrics/*_metrics.json')):
+              with open(f) as fh:
+                  merged.update(json.load(fh))
+          pathlib.Path('/app/outputs/metrics').mkdir(parents=True, exist_ok=True)
+          with open('/app/outputs/metrics/metrics.json', 'w') as fh:
+              json.dump(merged, fh, indent=2)
+          print(json.dumps(merged, indent=2))
+          \""
+
+      - name: Upload eval metrics
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-metrics
+          path: outputs/metrics/
+          retention-days: 90
+
+      - name: Upload eval logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-logs
+          path: outputs/logs/
+          retention-days: 90
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Publish to HF Hub (versioned)
+  # ---------------------------------------------------------------------------
+  publish:
+    needs: evaluate
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download eval metrics
+        uses: actions/download-artifact@v4
+        with:
+          name: eval-metrics
+          path: outputs/metrics/
+
+      - name: Download model (if available)
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: model-checkpoint
+          path: outputs/model/
+
+      - name: Install huggingface_hub
+        run: pip install --quiet huggingface_hub
+
+      - name: Push versioned run to HF Hub
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python -c "
+          from huggingface_hub import HfApi
+          import os
+
+          api = HfApi(token=os.environ['HF_TOKEN'])
+          repo_id = '${{ env.HF_REPO }}'
+          run_tag = 'run-${{ github.run_number }}'
+
+          # Ensure repo exists
+          api.create_repo(repo_id=repo_id, exist_ok=True, private=False)
+
+          # Create run branch
+          try:
+              api.create_branch(repo_id=repo_id, branch=run_tag)
+          except Exception:
+              pass  # branch may already exist
+
+          # Upload model files
+          model_dir = 'outputs/model'
+          if os.path.isdir(model_dir):
+              api.upload_folder(
+                  folder_path=model_dir,
+                  repo_id=repo_id,
+                  revision=run_tag,
+                  commit_message=f'Model from {run_tag} (commit ${{ github.sha }})',
+              )
+
+          # Upload metrics
+          api.upload_folder(
+              folder_path='outputs/metrics',
+              repo_id=repo_id,
+              path_in_repo='metrics',
+              revision=run_tag,
+              commit_message=f'Metrics from {run_tag}',
+          )
+
+          # Upload metrics.json to root for easy access by promote script
+          api.upload_file(
+              path_or_fileobj='outputs/metrics/metrics.json',
+              path_in_repo='metrics.json',
+              repo_id=repo_id,
+              revision=run_tag,
+              commit_message=f'Root metrics.json from {run_tag}',
+          )
+
+          print(f'Published {run_tag} to {repo_id}')
+          "

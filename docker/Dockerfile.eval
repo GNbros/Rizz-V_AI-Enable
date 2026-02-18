@@ -1,0 +1,57 @@
+# =============================================================================
+# Dockerfile.eval — Evaluation image for RV32IM Assembly LLM Pipeline
+# =============================================================================
+# Contains:
+#   - Python 3.11 + project deps (transformers, torch, etc.)
+#   - riscv64-unknown-elf-gcc for assembling RV32IM code
+#   - huggingface_hub for model registry operations
+#
+# Build:
+#   docker build -f docker/Dockerfile.eval -t rizz-v-eval:latest .
+#
+# Run (example):
+#   docker run --rm -v $(pwd):/app rizz-v-eval:latest \
+#       python scripts/score_and_promote.py --help
+# =============================================================================
+
+FROM ubuntu:22.04 AS base
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONHASHSEED=42
+
+# ---- System packages + RISC-V GNU toolchain --------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc-riscv64-unknown-elf \
+        binutils-riscv64-unknown-elf \
+        python3.11 \
+        python3.11-venv \
+        python3-pip \
+        git \
+        curl \
+        ca-certificates \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---- Python dependencies ---------------------------------------------------
+WORKDIR /app
+
+COPY requirements.txt /app/requirements.txt
+
+# Install project deps + evaluation extras
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r /app/requirements.txt && \
+    pip install --no-cache-dir \
+        scipy \
+        huggingface_hub \
+        pyyaml \
+        tqdm
+
+# ---- Verify toolchain is available -----------------------------------------
+RUN riscv64-unknown-elf-gcc --version && \
+    python --version
+
+# ---- Default entrypoint ----------------------------------------------------
+ENTRYPOINT ["/bin/bash"]

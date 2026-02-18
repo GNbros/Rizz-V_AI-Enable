@@ -1,0 +1,38 @@
+# ============================================================================
+# Experiment: TinyLlama 1.1B – Full Fine-Tune (no LoRA)
+# ============================================================================
+# Demonstrates the full-finetune code path (lora.enabled: false).
+#
+# CLI:
+#   python train/train_sft.py --config configs/experiments/tinyllama_full.yaml
+
+experiment_name: "tinyllama_full"
+base_model_id: "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+
+training:
+  max_length: 512
+  batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 5.0e-5
+  num_epochs: 3
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  fp16: true
+  bf16: false
+  logging_steps: 10
+  save_strategy: "epoch"
+  eval_strategy: "epoch"
+  seed: 42
+  dataloader_num_workers: 2
+  max_grad_norm: 1.0
+
+lora:
+  enabled: false
+
+dataset:
+  files:
+    - path: "data/processed/dataset/train.jsonl"
+      weight: 1.0
+  eval_file: "data/processed/dataset/val.jsonl"
+
+output_dir: "runs/"

@@ -1,0 +1,53 @@
+#include "riscv_test.h"
+#include "test_macros.h"
+
+RVTEST_RV64U
+RVTEST_CODE_BEGIN
+
+  TEST_BR2_OP_TAKEN( 2, bge,  0,  0 );
+  TEST_BR2_OP_TAKEN( 3, bge,  1,  1 );
+  TEST_BR2_OP_TAKEN( 4, bge, -1, -1 );
+  TEST_BR2_OP_TAKEN( 5, bge,  1,  0 );
+  TEST_BR2_OP_TAKEN( 6, bge,  1, -1 );
+  TEST_BR2_OP_TAKEN( 7, bge, -1, -2 );
+
+  TEST_BR2_OP_NOTTAKEN(  8, bge,  0,  1 );
+  TEST_BR2_OP_NOTTAKEN(  9, bge, -1,  1 );
+  TEST_BR2_OP_NOTTAKEN( 10, bge, -2, -1 );
+  TEST_BR2_OP_NOTTAKEN( 11, bge, -2,  1 );
+
+  TEST_BR2_SRC12_BYPASS( 12, 0, 0, bge, -1, 0 );
+  TEST_BR2_SRC12_BYPASS( 13, 0, 1, bge, -1, 0 );
+  TEST_BR2_SRC12_BYPASS( 14, 0, 2, bge, -1, 0 );
+  TEST_BR2_SRC12_BYPASS( 15, 1, 0, bge, -1, 0 );
+  TEST_BR2_SRC12_BYPASS( 16, 1, 1, bge, -1, 0 );
+  TEST_BR2_SRC12_BYPASS( 17, 2, 0, bge, -1, 0 );
+
+  TEST_BR2_SRC12_BYPASS( 18, 0, 0, bge, -1, 0 );
+  TEST_BR2_SRC12_BYPASS( 19, 0, 1, bge, -1, 0 );
+  TEST_BR2_SRC12_BYPASS( 20, 0, 2, bge, -1, 0 );
+  TEST_BR2_SRC12_BYPASS( 21, 1, 0, bge, -1, 0 );
+  TEST_BR2_SRC12_BYPASS( 22, 1, 1, bge, -1, 0 );
+  TEST_BR2_SRC12_BYPASS( 23, 2, 0, bge, -1, 0 );
+
+  TEST_CASE( 24, ra, 3, \
+  li  ra, 1; \
+  bge ra, zero, 1f; \
+  addi ra, ra, 1; \
+  addi ra, ra, 1; \
+  addi ra, ra, 1; \
+  addi ra, ra, 1; \
+1:  addi ra, ra, 1; \
+  addi ra, ra, 1; \
+  )
+
+  TEST_PASSFAIL
+
+RVTEST_CODE_END
+
+  .data
+RVTEST_DATA_BEGIN
+
+  TEST_DATA
+
+RVTEST_DATA_END

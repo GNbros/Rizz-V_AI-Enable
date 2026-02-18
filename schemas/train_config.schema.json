@@ -1,0 +1,87 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://github.com/GNbros/Rizz-V_AI-Enable/schemas/train_config.schema.json",
+    "title": "RV32IM Training Config",
+    "description": "Per-model training configuration. Shared constants (max_seq_len, tokens) come from configs/dataset.yaml.",
+    "type": "object",
+    "required": [
+        "base_model",
+        "dataset",
+        "val_dataset",
+        "output_dir",
+        "epochs",
+        "batch_size",
+        "lr",
+        "seed"
+    ],
+    "properties": {
+        "base_model": {
+            "type": "string",
+            "description": "HuggingFace model identifier, e.g. 'Salesforce/codegen-350M-multi'."
+        },
+        "dataset": {
+            "type": "string",
+            "description": "Path to training JSONL file."
+        },
+        "val_dataset": {
+            "type": "string",
+            "description": "Path to validation JSONL file."
+        },
+        "output_dir": {
+            "type": "string",
+            "description": "Directory to save checkpoints. Run ID subdirectory is created automatically."
+        },
+        "epochs": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Number of training epochs."
+        },
+        "batch_size": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Training batch size."
+        },
+        "lr": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "description": "Learning rate."
+        },
+        "seed": {
+            "type": "integer",
+            "description": "Random seed for reproducibility."
+        },
+        "gradient_accumulation_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "Gradient accumulation steps."
+        },
+        "warmup_steps": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 0,
+            "description": "Number of warmup steps for the learning rate scheduler."
+        },
+        "weight_decay": {
+            "type": "number",
+            "minimum": 0.0,
+            "default": 0.0,
+            "description": "Weight decay for AdamW optimizer."
+        },
+        "fp16": {
+            "type": "boolean",
+            "default": false,
+            "description": "Enable mixed-precision training."
+        },
+        "push_to_hub": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether to push the model to HuggingFace Hub after training."
+        },
+        "hub_repo": {
+            "type": "string",
+            "description": "HuggingFace Hub repository name (required if push_to_hub is true)."
+        }
+    },
+    "additionalProperties": false
+}

@@ -1,0 +1,88 @@
+# ==============================================================================
+# promote_prod.yml — Promote a specific run to HF Hub 'prod' branch
+# ==============================================================================
+#
+# I/O Schema:
+#   Inputs (workflow_dispatch):
+#     run_tag:    string — Run tag to promote (e.g. run-42) [required]
+#     hf_repo:    string — Target HF repo (default: auto from repo owner)
+#     auto_best:  bool   — Ignore run_tag, auto-select best by perplexity
+#
+#   Outputs (stdout):
+#     JSON with promotion result, selected run, all runs summary
+#
+# Secrets required:
+#   HF_TOKEN — Hugging Face write-access token
+# ==============================================================================
+
+name: Promote to Prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_tag:
+        description: 'Run tag to promote (e.g. run-42). Ignored if auto_best=true.'
+        required: false
+        default: ''
+        type: string
+      hf_repo:
+        description: 'HF Hub repo id'
+        required: false
+        default: ''
+        type: string
+      auto_best:
+        description: 'Auto-select best run by lowest perplexity'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+env:
+  HF_REPO: ${{ inputs.hf_repo || format('{0}/rizz-v-model', github.repository_owner) }}
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          pip install --quiet huggingface_hub numpy
+
+      - name: Validate inputs
+        run: |
+          if [[ "${{ inputs.auto_best }}" != "true" && -z "${{ inputs.run_tag }}" ]]; then
+            echo "::error::Either provide a run_tag or set auto_best=true"
+            exit 1
+          fi
+
+      - name: Run score_and_promote
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          ARGS="--hf-repo ${{ env.HF_REPO }} --promote --seed 42"
+
+          if [[ "${{ inputs.auto_best }}" == "true" ]]; then
+            ARGS="$ARGS --auto-best"
+          else
+            ARGS="$ARGS --run-tag ${{ inputs.run_tag }}"
+          fi
+
+          echo "Running: python scripts/score_and_promote.py $ARGS"
+          python scripts/score_and_promote.py $ARGS | tee promotion_result.json
+
+      - name: Upload promotion result
+        uses: actions/upload-artifact@v4
+        with:
+          name: promotion-result
+          path: promotion_result.json
+          retention-days: 90
+
+      - name: Summary
+        run: |
+          echo "## 🚀 Promotion Result" >> $GITHUB_STEP_SUMMARY
+          echo '```json' >> $GITHUB_STEP_SUMMARY
+          cat promotion_result.json >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

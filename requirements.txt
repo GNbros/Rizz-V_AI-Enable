@@ -5,3 +5,7 @@ torch
 jupyter
 fastapi
 uvicorn
+peft
+accelerate
+pyyaml
+bitsandbytes

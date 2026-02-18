@@ -1,0 +1,45 @@
+# ============================================================================
+# Experiment: bigcode/starcoderbase-1b with LoRA
+# ============================================================================
+# CLI:
+#   python train/train_sft.py --config configs/experiments/starcoder_lora.yaml
+
+experiment_name: "starcoder_lora"
+base_model_id: "bigcode/starcoderbase-1b"
+
+training:
+  max_length: 512
+  batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 1.0e-4
+  num_epochs: 3
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  fp16: true
+  bf16: false
+  logging_steps: 10
+  save_strategy: "epoch"
+  eval_strategy: "epoch"
+  seed: 42
+  dataloader_num_workers: 2
+  max_grad_norm: 1.0
+
+lora:
+  enabled: true
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  # StarCoder uses GPT-2-style attention naming
+  target_modules:
+    - "c_attn"
+    - "c_proj"
+  bias: "none"
+  task_type: "CAUSAL_LM"
+
+dataset:
+  files:
+    - path: "data/processed/dataset/train.jsonl"
+      weight: 1.0
+  eval_file: "data/processed/dataset/val.jsonl"
+
+output_dir: "runs/"

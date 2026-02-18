@@ -1,0 +1,44 @@
+# ============================================================================
+# Experiment: Salesforce/codegen-350M-multi with LoRA
+# ============================================================================
+# CLI:
+#   python train/train_sft.py --config configs/experiments/codegen_lora.yaml
+
+experiment_name: "codegen_lora"
+base_model_id: "Salesforce/codegen-350M-multi"
+
+training:
+  max_length: 512
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-4
+  num_epochs: 5
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  fp16: true
+  bf16: false
+  logging_steps: 10
+  save_strategy: "epoch"
+  eval_strategy: "epoch"
+  seed: 42
+  dataloader_num_workers: 2
+  max_grad_norm: 1.0
+
+lora:
+  enabled: true
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  # codegen uses Conv1D projections
+  target_modules:
+    - "qkv_proj"
+  bias: "none"
+  task_type: "CAUSAL_LM"
+
+dataset:
+  files:
+    - path: "data/processed/dataset/train.jsonl"
+      weight: 1.0
+  eval_file: "data/processed/dataset/val.jsonl"
+
+output_dir: "runs/"

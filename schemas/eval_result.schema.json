@@ -1,0 +1,195 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "$id": "https://github.com/GNbros/Rizz-V_AI-Enable/schemas/eval_result.schema.json",
+    "title": "RV32IM Eval Result",
+    "description": "Evaluation result for a single model run. Contains deterministic eval params and all metrics.",
+    "type": "object",
+    "required": [
+        "run_id",
+        "model",
+        "mode",
+        "eval_params",
+        "metrics",
+        "timestamp"
+    ],
+    "properties": {
+        "run_id": {
+            "type": "string",
+            "description": "Unique identifier for the training run, e.g. 'run-001'."
+        },
+        "model": {
+            "type": "string",
+            "description": "Base model identifier, e.g. 'Salesforce/codegen-350M-multi'."
+        },
+        "mode": {
+            "type": "string",
+            "enum": [
+                "causal",
+                "fim",
+                "block",
+                "function"
+            ],
+            "description": "Dataset mode used for evaluation."
+        },
+        "eval_params": {
+            "type": "object",
+            "description": "Deterministic evaluation parameters (Rule H5). Logged verbatim from configs/dataset.yaml.",
+            "required": [
+                "seed",
+                "temperature",
+                "top_p",
+                "decoding",
+                "max_new_tokens"
+            ],
+            "properties": {
+                "seed": {
+                    "type": "integer",
+                    "description": "Random seed for reproducibility."
+                },
+                "temperature": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "description": "Sampling temperature. 0.0 = greedy."
+                },
+                "top_p": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "description": "Nucleus sampling parameter."
+                },
+                "decoding": {
+                    "type": "string",
+                    "enum": [
+                        "greedy",
+                        "sampling"
+                    ],
+                    "description": "Decoding strategy."
+                },
+                "max_new_tokens": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Maximum number of tokens to generate per sample."
+                }
+            },
+            "additionalProperties": false
+        },
+        "metrics": {
+            "type": "object",
+            "description": "Evaluation metrics.",
+            "required": [
+                "perplexity",
+                "token_accuracy",
+                "opcode_accuracy",
+                "assemble_pass_rate"
+            ],
+            "properties": {
+                "perplexity": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "description": "Model perplexity on eval dataset."
+                },
+                "token_accuracy": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "description": "Fraction of correctly predicted tokens."
+                },
+                "opcode_accuracy": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "description": "Fraction of correctly predicted opcodes (instruction mnemonics)."
+                },
+                "assemble_pass_rate": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "description": "Fraction of generated snippets that assemble successfully with riscv-gcc."
+                },
+                "pass_at_1": {
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "description": "pass@1 metric (v1). Null until pass@k is implemented."
+                },
+                "pass_at_5": {
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "minimum": 0.0,
+                    "maximum": 1.0,
+                    "description": "pass@5 metric (v1). Null until pass@k is implemented."
+                }
+            },
+            "additionalProperties": false
+        },
+        "abi_lint": {
+            "type": [
+                "object",
+                "null"
+            ],
+            "description": "ABI-lint aggregate results (v1). Null until ABI-lint is implemented.",
+            "properties": {
+                "total_functions": {
+                    "type": "integer"
+                },
+                "passed": {
+                    "type": "integer"
+                },
+                "failed": {
+                    "type": "integer"
+                },
+                "pass_rate": {
+                    "type": "number"
+                },
+                "common_violations": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "additionalProperties": false
+        },
+        "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp of when evaluation completed."
+        },
+        "samples": {
+            "type": "array",
+            "description": "Per-sample details (optional, can be large).",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "prompt": {
+                        "type": "string"
+                    },
+                    "generated": {
+                        "type": "string"
+                    },
+                    "reference": {
+                        "type": "string"
+                    },
+                    "assembles": {
+                        "type": "boolean"
+                    },
+                    "abi_lint_passed": {
+                        "type": [
+                            "boolean",
+                            "null"
+                        ]
+                    }
+                }
+            }
+        }
+    },
+    "additionalProperties": false
+}

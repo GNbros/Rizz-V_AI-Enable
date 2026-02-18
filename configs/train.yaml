@@ -1,0 +1,69 @@
+# ============================================================================
+# RV32IM Training – Base Config Schema
+# ============================================================================
+# This file defines defaults for model-agnostic SFT training.
+# Override per-experiment via configs/experiments/<name>.yaml.
+#
+# CLI usage:
+#   python train/train_sft.py --config configs/train.yaml
+#   python train/train_sft.py --config configs/experiments/codegen_lora.yaml
+# ============================================================================
+
+experiment_name: "default"
+
+# Model — change this per experiment, no other code changes needed
+base_model_id: "bigcode/tiny_starcoder_py"
+
+# Shared token + dataset constants (single source of truth)
+token_registry: "configs/dataset.yaml"
+
+# ---------------------------------------------------------------------------
+# Training hyperparameters
+# ---------------------------------------------------------------------------
+training:
+  max_length: 512
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-4
+  num_epochs: 3
+  warmup_ratio: 0.05
+  weight_decay: 0.01
+  fp16: true
+  bf16: false
+  logging_steps: 10
+  save_strategy: "epoch"
+  eval_strategy: "epoch"
+  seed: 42
+  dataloader_num_workers: 2
+  max_grad_norm: 1.0
+
+# ---------------------------------------------------------------------------
+# LoRA configuration (via PEFT)
+# Set enabled: false for full fine-tune
+# ---------------------------------------------------------------------------
+lora:
+  enabled: true
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+    - "q_proj"
+    - "v_proj"
+    - "k_proj"
+    - "o_proj"
+  bias: "none"
+  task_type: "CAUSAL_LM"
+
+# ---------------------------------------------------------------------------
+# Dataset paths (relative to project root)
+# ---------------------------------------------------------------------------
+dataset:
+  files:
+    - path: "data/processed/dataset/train.jsonl"
+      weight: 1.0
+  eval_file: "data/processed/dataset/val.jsonl"
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+output_dir: "runs/"
