@@ -1,18 +1,31 @@
-# Training config for Salesforce/codegen-350M-multi
-# Shared constants (max_seq_len, tokens) come from configs/dataset.yaml
-# Schema: schemas/train_config.schema.json
+# Training Config for Salesforce/codegen-350M-multi
 
-base_model: Salesforce/codegen-350M-multi
-dataset: data/causal/train.jsonl
-val_dataset: data/causal/val.jsonl
-output_dir: outputs/
-epochs: 5
-batch_size: 8
-lr: 5.0e-5
-seed: 42
-gradient_accumulation_steps: 1
-warmup_steps: 100
-weight_decay: 0.01
-fp16: false
-push_to_hub: false
-hub_repo: GNbros/rizz-v-codegen-350M-multi
+experiment_name: codegen-350M-multi
+base_model_id: Salesforce/codegen-350M-multi
+
+dataset:
+  files:
+    - path: data/processed/dataset/train.jsonl
+      weight: 1.0
+  eval_file: data/processed/dataset/val.jsonl
+
+token_registry: configs/dataset.yaml
+
+training:
+  num_epochs: 3
+  batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 2e-4
+  save_strategy: "epoch"
+  eval_strategy: "epoch"
+  logging_steps: 10
+  seed: 42
+  fp16: true
+  max_length: 512
+
+lora:
+  enabled: true
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["qkv_proj"]

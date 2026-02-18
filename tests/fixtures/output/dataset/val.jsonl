@@ -1,0 +1,1 @@
+{"text": "#*****************************************************************************\n# test_b.S\n#-----------------------------------------------------------------------------\n.text\n.globl fib\n.type fib, @function\nfib:\n    li a0, 0\n    li a1, 1\n    mv a2, a0\n    ret\n", "meta": {"file": "test_b.S", "function": null, "span_lines": [1, 11], "mode": "causal"}}

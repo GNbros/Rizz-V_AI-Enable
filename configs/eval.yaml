@@ -1,0 +1,15 @@
+# deterministic evaluation settings
+seed: 42
+
+decoding:
+  temperature: 1.0        # 1.0 required for pass@k unbiased estimator
+  top_p: 0.95
+  top_k: 0                # 0 = disabled
+  do_sample: true          # true for pass@k, false for pure greedy/perplexity
+  max_new_tokens: 256
+  num_return_sequences: 5  # generation budget for pass@k
+  repetition_penalty: 1.0 # 1.0 = no penalty
+
+generation:
+  stop_token_ids: []      # populated at runtime based on tokenizer (e.g. eos_token_id)
+  pad_token_id: null      # populated at runtime

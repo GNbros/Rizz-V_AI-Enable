@@ -1,121 +1,36 @@
-# ============================================================================
-# RV32IM Dataset Pipeline – Master Configuration
-# ============================================================================
-# Single source of truth for all tokens, paths, seeds, and tunables.
-# Every script reads this file via --config flag.
-#
-# CLI usage examples:
-#   python scripts/normalize_asm.py --config configs/dataset.yaml
-#   python scripts/split_by_file.py --config configs/dataset.yaml
-#   python scripts/build_dataset.py --config configs/dataset.yaml
-# ============================================================================
-
-# ---------------------------------------------------------------------------
-# Paths  (relative to project root)
-# ---------------------------------------------------------------------------
 paths:
-  raw_input: "riscv_dataset.txt"                    # input: monolithic .S dump
-  normalized_dir: "data/processed/normalized"       # output: one .S per snippet
-  splits_dir: "data/processed/splits"               # output: {train,val,test}_files.txt
-  dataset_dir: "data/processed/dataset"             # output: {train,val,test}.jsonl + manifest.json
+  raw_input: "riscv_dataset.txt"
+  normalized_dir: "data/normalized"
+  splits_dir: "data/splits"
+  jsonl_dir: "data/jsonl"
 
-# ---------------------------------------------------------------------------
-# Determinism
-# ---------------------------------------------------------------------------
-seed: 42                                            # global seed; every RNG is derived from this
-
-# ---------------------------------------------------------------------------
-# Normalization  (normalize_asm.py)
-# ---------------------------------------------------------------------------
-normalize:
-  strip_comments: true            # remove # line comments (but keep #include / #define)
-  strip_block_comments: true      # remove /* ... */ comments
-  collapse_blank_lines: true      # runs of blank lines → single blank line
-  indent_spaces: 2                # re-indent to N spaces (0 = leave as-is)
-  register_alias_direction: "abi" # "abi" → x0→zero, x1→ra …  |  "xreg" → zero→x0 …
-
-# ---------------------------------------------------------------------------
-# File Split  (split_by_file.py)
-# ---------------------------------------------------------------------------
-split:
-  train: 0.80
-  val:   0.10
-  test:  0.10
-
-# ---------------------------------------------------------------------------
-# Special Tokens  (shared across ALL agents & scripts)
-# ---------------------------------------------------------------------------
-# ⚠ BREAKING-CHANGE NOTE: if any token is renamed or removed, notify all
-#   downstream agents (Training, Evaluation) and bump this section's version.
 special_tokens:
-  version: 1                       # increment on any token change
-  fim_prefix:   "<fim_prefix>"
-  fim_suffix:   "<fim_suffix>"
-  fim_middle:   "<fim_middle>"
-  block_prefix: "<block_prefix>"
-  block_end:    "<block_end>"
-  task_open:    "<task>"
-  task_close:   "</task>"
-  asm_open:     "<asm>"
-  eof_func:     "<eof_func>"
+  pad_token: "<pad>"
+  eos_token: "<|endoftext|>"
+  unk_token: "<|endoftext|>"
+  fim_prefix: "<fim_prefix>"
+  fim_middle: "<fim_middle>"
+  fim_suffix: "<fim_suffix>"
 
-# ---------------------------------------------------------------------------
-# Mode Mixing  (build_dataset.py)
-# ---------------------------------------------------------------------------
-# Ratios must sum to 1.0.  Each snippet is assigned ONE mode per draw.
+normalize:
+  strip_license_headers: true
+  strip_comments: true
+  strip_block_comments: true
+  collapse_blank_lines: true
+  indent_spaces: 4
+  register_alias_direction: "abi"  # 'abi' (x1->ra) or 'xreg' (ra->x1) or '' (none)
+
+split:
+  train: 0.8
+  val: 0.1
+  test: 0.1
+  seed: 42
+
 modes:
-  causal:   0.40
-  fim:      0.30
-  block:    0.20
-  function: 0.10
-
-# ---------------------------------------------------------------------------
-# FIM parameters
-# ---------------------------------------------------------------------------
-fim:
-  min_prefix_lines: 1              # minimum prefix lines before split
-  min_suffix_lines: 1              # minimum suffix lines after split
-
-# ---------------------------------------------------------------------------
-# Block parameters
-# ---------------------------------------------------------------------------
-block:
-  min_prefix_lines: 2              # minimum lines in prefix
-  max_prefix_ratio: 0.8            # prefix cannot exceed 80% of snippet
-
-# ---------------------------------------------------------------------------
-# Function-level parameters
-# ---------------------------------------------------------------------------
-function:
-  label_pattern: "^[a-zA-Z_][a-zA-Z0-9_]*:"  # regex to detect function labels
-  include_directives: true                     # include .globl / .type in signature
-
-# ---------------------------------------------------------------------------
-# JSONL Record Schema  (output of build_dataset.py)
-# ---------------------------------------------------------------------------
-# Each line in {train,val,test}.jsonl is a JSON object:
-#
-#   {
-#     "text": "<string>",            # the training text (with special tokens)
-#     "meta": {
-#       "file":       "<string>",    # source normalized filename
-#       "function":   "<string>",    # function/label name or null
-#       "span_lines": [<int>,<int>], # [start, end] line range in normalized file
-#       "mode":       "<string>"     # one of: causal | fim | block | function
-#     }
-#   }
-#
-# Manifest schema  (manifest.json):
-#
-#   {
-#     "seed": <int>,
-#     "created_at": "<ISO-8601>",
-#     "splits": {
-#       "train": {"total": <int>, "causal": <int>, "fim": <int>, "block": <int>, "function": <int>},
-#       "val":   { ... },
-#       "test":  { ... }
-#     }
-#   }
+  causal: 0.4
+  fim: 0.3
+  block: 0.2
+  function: 0.1
 
 # ---------------------------------------------------------------------------
 # RV32IM Opcodes  (single source of truth – used by eval & lint scripts)
@@ -222,14 +137,10 @@ branch_instructions:
   - bgtz
 
 # ---------------------------------------------------------------------------
-# Evaluation Parameters  (Rule H5: Deterministic Eval)
+# Default Evaluation Decoding  (deterministic – seed + params logged to output)
 # ---------------------------------------------------------------------------
-# These values are logged verbatim in eval_results/<run_id>.json -> eval_params.
-# Two runs with the same checkpoint + this config MUST produce identical results.
-eval:
-  seed: 42                     # random seed for all eval generation
-  temperature: 0.0             # 0.0 = greedy (deterministic for text metrics)
-  top_p: 1.0                   # nucleus sampling parameter
-  max_new_tokens: 256          # max tokens to generate per eval sample
-  decoding: greedy              # greedy | sampling (must match temperature)
-  num_samples_pass_k: 5        # number of samples for pass@k (v1)
+eval_decoding:
+  temperature: 0.8
+  top_p: 0.95
+  seed: 42
+  max_new_tokens: 256

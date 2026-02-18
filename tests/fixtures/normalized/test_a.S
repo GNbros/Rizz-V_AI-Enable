@@ -1,0 +1,12 @@
+# RISC-V Assembly Smoke Test Sample A
+.text
+.globl main
+.type main, @function
+main:
+    addi sp, sp, -16
+    sw ra, 12(sp)
+    li a0, 42
+    call print_int
+    lw ra, 12(sp)
+    addi sp, sp, 16
+    ret

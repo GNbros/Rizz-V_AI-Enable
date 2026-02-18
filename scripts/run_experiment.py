@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
+from typing import Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 TRAIN_SCRIPT = PROJECT_ROOT / "train" / "train_sft.py"
@@ -108,7 +109,7 @@ def run_single_experiment(config_path: str) -> dict:
     return result
 
 
-def format_duration(seconds: float | None) -> str:
+def format_duration(seconds: Optional[float]) -> str:
     """Format seconds to human-readable duration."""
     if seconds is None:
         return "—"

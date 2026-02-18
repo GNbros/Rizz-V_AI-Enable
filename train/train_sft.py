@@ -488,7 +488,7 @@ Examples:
     else:
         model.save_pretrained(str(model_dir))
 
-    tokenizer.save_pretrained(str(tokenizer_dir))
+    tokenizer.save_pretrained(str(model_dir))
     logger.info(f"Model saved to {model_dir}")
     logger.info(f"Tokenizer saved to {tokenizer_dir}")
 
