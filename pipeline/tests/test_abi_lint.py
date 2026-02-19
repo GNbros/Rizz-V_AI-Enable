@@ -8,7 +8,7 @@ Run:
 """
 
 import pytest
-from scripts.abi_lint import lint_asm, LintResult, Violation
+from pipeline.scripts.abi_lint import lint_asm, LintResult, Violation
 
 # ── Fixtures (inline assembly snippets) ─────────────────────────────────────
 

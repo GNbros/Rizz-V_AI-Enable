@@ -48,3 +48,5 @@ jobs:
       # Run only the mocked API test, excluding heavy e2e tests
       run: |
         pytest pipeline/tests/test_api_mock.py -v
+        pytest pipeline/tests/test_eval_text.py -v
+        pytest pipeline/tests/test_abi_lint.py -v
