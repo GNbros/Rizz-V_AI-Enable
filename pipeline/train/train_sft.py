@@ -65,7 +65,7 @@ logger = logging.getLogger("train_sft")
 # ---------------------------------------------------------------------------
 # Project root (two levels up from train/train_sft.py)
 # ---------------------------------------------------------------------------
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 # ============================================================================

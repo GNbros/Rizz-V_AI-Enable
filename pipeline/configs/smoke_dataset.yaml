@@ -2,10 +2,10 @@
 # Points to fixtures instead of real data
 
 paths:
-  raw_input: "tests/fixtures/dummy_raw.txt"          # unused by build_dataset
-  normalized_dir: "tests/fixtures/output/normalized"        # Source of .S files
-  splits_dir: "tests/fixtures/output/splits"
-  jsonl_dir: "tests/fixtures/output/dataset"
+  raw_input: "pipeline/tests/fixtures/dummy_raw.txt"          # unused by build_dataset
+  normalized_dir: "pipeline/tests/fixtures/output/normalized"        # Source of .S files
+  splits_dir: "pipeline/tests/fixtures/output/splits"
+  jsonl_dir: "pipeline/tests/fixtures/output/dataset"
 
 seed: 42
 split:

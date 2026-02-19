@@ -69,8 +69,11 @@ def load_config(config_path: str | None) -> dict[str, Any]:
             config_path = str(default)
         else:
             return {}
-    with open(config_path) as f:
-        return yaml.safe_load(f) or {}
+    try:
+        with open(config_path) as f:
+            return yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return {}
 
 
 def get_opcodes(config: dict[str, Any]) -> set[str]:

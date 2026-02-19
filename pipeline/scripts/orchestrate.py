@@ -24,7 +24,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 def run_step(cmd: list[str], step_name: str) -> None:
     """Run a subprocess command and check for errors."""
@@ -42,8 +42,8 @@ def run_step(cmd: list[str], step_name: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="Run the full RV32IM pipeline end-to-end.")
-    parser.add_argument("--config", required=True, help="Path to model config (e.g. configs/codegen.yaml)")
-    parser.add_argument("--dataset-config", default="configs/dataset.yaml", help="Path to shared dataset config")
+    parser.add_argument("--config", required=True, help="Path to model config (e.g. pipeline/configs/codegen.yaml)")
+    parser.add_argument("--dataset-config", default="pipeline/configs/dataset.yaml", help="Path to shared dataset config")
     parser.add_argument("--skip-data", action="store_true", help="Skip dataset generation (use existing)")
     parser.add_argument("--skip-train", action="store_true", help="Skip training (use existing checkpoint)")
     parser.add_argument("--skip-eval", action="store_true", help="Skip evaluation")
@@ -55,26 +55,14 @@ def main():
         model_cfg = yaml.safe_load(f)
     
     # Extract paths and parameters
-    # Note: build_dataset.py uses the normalized dir from dataset.yaml to produce dataset structure
-    # train_sft.py needs the config path
     
     run_id = f"run-{int(subprocess.check_output(['date', '+%s']).strip())}"
     output_dir = Path(model_cfg.get("output_dir", "outputs")) / run_id
     
     # 1. Dataset Generation
     if not args.skip_data:
-        # We assume normalize.py and split_by_file.py have been run already or are stable.
-        # But strictly speaking, "end-to-end" might imply running them too. 
-        # For now, let's run build_dataset.py which generates the JSONL for training.
-        # We also implicitly assume data/processed/normalized exists.
-        
-        # Determine dataset output dir from dataset config or default
-        # Actually build_dataset.py reads config and outputs to `data/processed/dataset` usually
-        # We can enforce a specific output if the script supports it, or just rely on config.
-        # Let's check `scripts/build_dataset.py` args... it takes --config.
-        
         run_step([
-            sys.executable, "scripts/build_dataset.py",
+            sys.executable, "pipeline/scripts/build_dataset.py",
             "--config", args.dataset_config
         ], "Dataset Generation")
 
@@ -82,15 +70,12 @@ def main():
     if not args.skip_train:
         logger.info(f"Starting training run: {run_id}")
         
-        # Override experiment_name to force output to outputs/{run_id}
-        # (Assuming config.output_dir is "outputs/")
         run_step([
-            sys.executable, "train/train_sft.py",
+            sys.executable, "pipeline/train/train_sft.py",
             "--config", args.config,
             "--override", f"experiment_name={run_id}"
         ], "Training")
         
-        # Based on train_sft.py logic: output_dir/experiment_name/model
         base_output = model_cfg.get("output_dir", "outputs")
         checkpoint_dir = PROJECT_ROOT / base_output / run_id / "model"
         
@@ -101,8 +86,6 @@ def main():
         logger.info(f"Checkpoint saved at: {checkpoint_dir}")
 
     else:
-        # Use latest run or specific arg? For now, latest in outputs/
-        # But wait, we calculate output_dir based on config.
         base_output = model_cfg.get("output_dir", "outputs")
         outputs_path = PROJECT_ROOT / base_output
         if not outputs_path.exists():
@@ -128,16 +111,16 @@ def main():
         
         # Text Eval
         run_step([
-            sys.executable, "scripts/eval_text.py",
+            sys.executable, "pipeline/scripts/eval_text.py",
             "--checkpoint", checkpoint_dir,
-            "--test-file", "data/processed/dataset/test.jsonl", # inferred from build_dataset default?
+            "--test-file", "data/processed/dataset/test.jsonl",
             "--output", str(eval_output),
             "--config", args.dataset_config
         ], "Eval (Text Metrics)")
         
         # Assemble Eval
         run_step([
-            sys.executable, "scripts/eval_assemble.py",
+            sys.executable, "pipeline/scripts/eval_assemble.py",
             "--checkpoint", checkpoint_dir,
             "--test-file", "data/processed/dataset/test.jsonl",
             "--output-dir", checkpoint_dir,

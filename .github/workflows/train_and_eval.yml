@@ -20,16 +20,11 @@
 
 name: Train & Evaluate
 
-on:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/**'
-      - 'configs/**'
-      - 'docker/**'
-      - 'requirements.txt'
-  pull_request:
-    branches: [main]
+# only run manually
+# on:
+#   push:
+#     branches: [main] ...
+
   workflow_dispatch:
     inputs:
       skip_training:
@@ -78,7 +73,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: docker/Dockerfile.eval
+          file: pipeline/docker/Dockerfile.eval
           tags: ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
           load: true
           cache-from: type=gha
@@ -127,7 +122,7 @@ jobs:
             -e HF_TOKEN=${{ secrets.HF_TOKEN }} \
             -w /app \
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
-            -c "python scripts/train.py \
+            -c "python pipeline/train/train_sft.py \
                   --model-name '${{ env.MODEL_NAME }}' \
                   --seed ${{ env.EVAL_SEED }} \
                   --output-dir /app/outputs/model \
@@ -181,7 +176,7 @@ jobs:
             -e PYTHONHASHSEED=${{ env.EVAL_SEED }} \
             -w /app \
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
-            -c "python scripts/eval_text.py \
+            -c "python pipeline/scripts/eval_text.py \
                   --model-dir /app/outputs/model \
                   --model-name '${{ env.MODEL_NAME }}' \
                   --seed ${{ env.EVAL_SEED }} \
@@ -195,7 +190,7 @@ jobs:
             -e PYTHONHASHSEED=${{ env.EVAL_SEED }} \
             -w /app \
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
-            -c "python scripts/eval_assemble.py \
+            -c "python pipeline/scripts/eval_assemble.py \
                   --model-dir /app/outputs/model \
                   --model-name '${{ env.MODEL_NAME }}' \
                   --gcc riscv64-unknown-elf-gcc \
@@ -211,7 +206,7 @@ jobs:
             -e PYTHONHASHSEED=${{ env.EVAL_SEED }} \
             -w /app \
             ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
-            -c "python scripts/eval_passk.py \
+            -c "python pipeline/scripts/eval_passk.py \
                   --model-dir /app/outputs/model \
                   --model-name '${{ env.MODEL_NAME }}' \
                   --k 1 5 \

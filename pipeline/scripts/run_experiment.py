@@ -37,8 +37,8 @@ from pathlib import Path
 import yaml
 from typing import Optional
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-TRAIN_SCRIPT = PROJECT_ROOT / "train" / "train_sft.py"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+TRAIN_SCRIPT = PROJECT_ROOT / "pipeline" / "train" / "train_sft.py"
 
 
 def validate_config(config_path: str) -> dict:

@@ -4,7 +4,7 @@ import shutil
 import pytest
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 def test_pipeline_smoke_end_to_end():
     """
@@ -17,9 +17,9 @@ def test_pipeline_smoke_end_to_end():
     """
     
     # 1. Setup paths
-    smoke_dataset_cfg = PROJECT_ROOT / "configs/smoke_dataset.yaml"
-    smoke_model_cfg = PROJECT_ROOT / "configs/smoke_model.yaml"
-    output_base = PROJECT_ROOT / "tests/fixtures/output"
+    smoke_dataset_cfg = PROJECT_ROOT / "pipeline/configs/smoke_dataset.yaml"
+    smoke_model_cfg = PROJECT_ROOT / "pipeline/configs/smoke_model.yaml"
+    output_base = PROJECT_ROOT / "pipeline/tests/fixtures/output"
     
     # Clean previous run
     if output_base.exists():
@@ -29,7 +29,7 @@ def test_pipeline_smoke_end_to_end():
     # 2. Run orchestrator
     # We skip push because it requires HF token and network
     cmd = [
-        sys.executable, "scripts/orchestrate.py",
+        sys.executable, "pipeline/scripts/orchestrate.py",
         "--config", str(smoke_model_cfg),
         "--dataset-config", str(smoke_dataset_cfg),
         "--skip-push" 

@@ -179,7 +179,9 @@ def main() -> None:
     args = parser.parse_args()
 
     cfg = load_config(args.config)
-    project_root = Path(args.config).resolve().parent.parent
+    # project_root = Path(args.config).resolve().parent.parent  <-- OLD
+    # script is in pipeline/scripts/ => parent.parent.parent = repo root
+    project_root = Path(__file__).resolve().parent.parent.parent
     
     # Paths - using keys from the rich config
     try:

@@ -48,20 +48,20 @@ class TestOpcodeHelpers:
     """Test the get_opcodes helper from eval_text."""
 
     def test_get_opcodes_from_config(self):
-        from scripts.eval_text import get_opcodes
+        from pipeline.scripts.eval_text import get_opcodes
         config = {"rv32im_opcodes": ["add", "sub", "lw"]}
         result = get_opcodes(config)
         assert result == {"add", "sub", "lw"}
 
     def test_get_opcodes_fallback(self):
-        from scripts.eval_text import get_opcodes
+        from pipeline.scripts.eval_text import get_opcodes
         result = get_opcodes({})  # no rv32im_opcodes key
         assert "add" in result
         assert "ret" in result
         assert len(result) > 30
 
     def test_load_config_missing_file(self):
-        from scripts.eval_text import load_config
+        from pipeline.scripts.eval_text import load_config
         config = load_config("/nonexistent/path.yaml")
         assert isinstance(config, dict)  # should return empty dict or from default
 
@@ -70,7 +70,7 @@ class TestOpcodeHelpers:
 
 class TestJsonlLoading:
     def test_load_jsonl(self, tmp_path):
-        from scripts.eval_text import load_jsonl
+        from pipeline.scripts.eval_text import load_jsonl
         f = tmp_path / "test.jsonl"
         f.write_text('{"text": "add a0, a1, a2"}\n{"text": "ret"}\n')
         records = load_jsonl(str(f))
@@ -78,7 +78,7 @@ class TestJsonlLoading:
         assert records[0]["text"] == "add a0, a1, a2"
 
     def test_load_jsonl_empty_lines(self, tmp_path):
-        from scripts.eval_text import load_jsonl
+        from pipeline.scripts.eval_text import load_jsonl
         f = tmp_path / "test.jsonl"
         f.write_text('{"text": "nop"}\n\n{"text": "ret"}\n\n')
         records = load_jsonl(str(f))
