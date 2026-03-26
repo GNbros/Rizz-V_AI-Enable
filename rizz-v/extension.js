@@ -2,6 +2,7 @@ const vscode = require('vscode');
 const fetch = require('node-fetch');
 
 let debounceTimeout = null;
+let debounceResolve = null;
 let requestCounter = 0;
 let retryTimer = null;
 let extensionContext = null;
@@ -49,12 +50,19 @@ function activate(context) {
                     return { items: [] };
                 }
 
+                // prefix: lines above cursor (up to 40 lines back)
                 const startLine = Math.max(0, position.line - 40);
-                const textBefore = document.getText(
+                const prefix = document.getText(
                     new vscode.Range(new vscode.Position(startLine, 0), position)
-                );
+                ).trimStart();
 
-                if (!textBefore.trim()) return { items: [] };
+                if (!prefix) return { items: [] };
+
+                // suffix: lines below cursor (up to 20 lines ahead)
+                const endLine = Math.min(document.lineCount - 1, position.line + 20);
+                const suffix = document.getText(
+                    new vscode.Range(position, new vscode.Position(endLine, document.lineAt(endLine).text.length))
+                ).trimEnd();
 
                 // UC-2: detect comment-to-code — previous line is a descriptive comment
                 const prevLine = position.line > 0
@@ -68,7 +76,7 @@ function activate(context) {
                 const myId = ++requestCounter;
 
                 try {
-                    const suggestion = await debouncedSuggestion(textBefore, maxTokens);
+                    const suggestion = await debouncedSuggestion(prefix, suffix, maxTokens);
 
                     if (requestCounter !== myId) return { items: [] };
                     if (!suggestion || suggestion.trim() === '') return { items: [] };
@@ -81,7 +89,7 @@ function activate(context) {
                     item.command = {
                         command: 'rizz-v.suggestionAccepted',
                         title: 'Suggestion Accepted',
-                        arguments: [textBefore, suggestion, lineNumber, suggestionType]
+                        arguments: [prefix, suffix, suggestion, lineNumber, suggestionType]
                     };
 
                     return { items: [item] };
@@ -99,7 +107,7 @@ function activate(context) {
     context.subscriptions.push(
         vscode.commands.registerCommand(
             'rizz-v.suggestionAccepted',
-            async (prompt, suggestion, lineNumber, suggestionType) => {
+            async (prefix, suffix, suggestion, lineNumber, suggestionType) => {
                 const choice = await vscode.window.showInformationMessage(
                     `Rizz-V suggestion accepted on line ${lineNumber} — Was this helpful?`,
                     '👍 Helpful',
@@ -109,7 +117,8 @@ function activate(context) {
                 const rating = choice === '👍 Helpful' ? 1 : choice === '👎 Not helpful' ? 0 : null;
 
                 queueRating({
-                    prompt,
+                    prefix,
+                    suffix,
                     suggestion,
                     suggestion_type: suggestionType,
                     accepted: true,
@@ -170,34 +179,42 @@ async function pingBackend() {
 
 // --- Debounce ---
 
-function debouncedSuggestion(prompt, maxTokens) {
+function debouncedSuggestion(prefix, suffix, maxTokens) {
+    // Resolve the previous hanging promise immediately so it doesn't leak
+    if (debounceResolve) {
+        debounceResolve(null);
+        debounceResolve = null;
+    }
+    clearTimeout(debounceTimeout);
+
     return new Promise((resolve, reject) => {
-        clearTimeout(debounceTimeout);
+        debounceResolve = resolve;
         debounceTimeout = setTimeout(async () => {
+            debounceResolve = null;
             try {
-                resolve(await getAssemblySuggestion(prompt, maxTokens));
+                resolve(await getAssemblySuggestion(prefix, suffix, maxTokens));
             } catch (e) {
                 reject(e);
             }
-        }, 400);
+        }, 500);
     });
 }
 
 // --- API ---
 
-async function getAssemblySuggestion(prompt, maxTokens = 50) {
+async function getAssemblySuggestion(prefix, suffix = '', maxTokens = 50) {
     const response = await fetch('http://127.0.0.1:8000/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, max_new_tokens: maxTokens })
+        body: JSON.stringify({ prefix, suffix, max_new_tokens: maxTokens })
     });
 
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
     const data = await response.json();
     const generatedCode = data.generated_code.trim();
-    if (generatedCode.startsWith(prompt)) {
-        return generatedCode.substring(prompt.length).trim();
+    if (generatedCode.startsWith(prefix)) {
+        return generatedCode.substring(prefix.length).trim();
     }
     return generatedCode;
 }

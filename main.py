@@ -18,7 +18,8 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS rating (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            prompt TEXT NOT NULL,
+            prefix TEXT NOT NULL,
+            suffix TEXT NOT NULL DEFAULT '',
             suggestion TEXT NOT NULL,
             rating INTEGER CHECK(rating = 0 OR rating = 1 OR rating IS NULL),
             suggestion_type TEXT NOT NULL DEFAULT 'realtime',
@@ -28,6 +29,7 @@ def init_db():
     ''')
     # Migrate existing tables that are missing new columns
     for col, definition in [
+        ('suffix', "TEXT NOT NULL DEFAULT ''"),
         ('suggestion_type', "TEXT NOT NULL DEFAULT 'realtime'"),
         ('accepted', 'INTEGER NOT NULL DEFAULT 1'),
         ('timestamp', "TEXT NOT NULL DEFAULT ''"),
@@ -43,12 +45,12 @@ def init_db():
 init_db()
 
 # Save rating to database
-def save_rating(prompt: str, suggest: str, rating, suggestion_type: str, accepted: int, timestamp: str):
+def save_rating(prefix: str, suffix: str, suggest: str, rating, suggestion_type: str, accepted: int, timestamp: str):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
-        "INSERT INTO rating (prompt, suggestion, rating, suggestion_type, accepted, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-        (prompt, suggest, rating, suggestion_type, accepted, timestamp)
+        "INSERT INTO rating (prefix, suffix, suggestion, rating, suggestion_type, accepted, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (prefix, suffix, suggest, rating, suggestion_type, accepted, timestamp)
     )
     conn.commit()
     conn.close()
@@ -130,11 +132,13 @@ app = FastAPI(title="RISC-V Code Generation API", version="1.0")
 
 # Input Schemas
 class PromptRequest(BaseModel):
-    prompt: str
+    prefix: str
+    suffix: str = ''
     max_new_tokens: int = 30
 
 class RatingRequest(BaseModel):
-    prompt: str
+    prefix: str
+    suffix: str = ''
     suggestion: str
     rating: Optional[int] = None
     suggestion_type: str = 'realtime'
@@ -149,22 +153,22 @@ def read_root():
 # Code generation endpoint
 @app.post("/generate")
 def generate_code(req: PromptRequest):
-    if not req.prompt:
-        return {"error": "Prompt is required"}
+    if not req.prefix:
+        return {"error": "Prefix is required"}
     if req.max_new_tokens <= 0:
         return {"error": "max_new_tokens must be greater than 0"}
-    if len(req.prompt) > 512:
-        return {"error": "Prompt length exceeds 512 characters"}
-    
-    prompt = f"{FIM_PREFIX}{req.prompt}{FIM_SUFFIX}{FIM_MIDDLE}"
+    if len(req.prefix) > 512:
+        return {"error": "Prefix length exceeds 512 characters"}
+
+    prompt = f"{FIM_PREFIX}{req.prefix}{FIM_SUFFIX}{req.suffix}{FIM_MIDDLE}"
     result = complete_code(model, tokenizer, prompt, max_new_tokens=req.max_new_tokens)
     return {"generated_code": result}
 
 # Rating endpoint with DB insert
 @app.post("/rating")
 def rating_code(req: RatingRequest):
-    if not req.prompt:
-        return {"error": "Prompt is required"}
+    if not req.prefix:
+        return {"error": "Prefix is required"}
     if not req.suggestion:
         return {"error": "Suggestion is required"}
     if req.rating is not None and req.rating not in (0, 1):
@@ -173,5 +177,5 @@ def rating_code(req: RatingRequest):
         return {"error": "suggestion_type must be 'realtime' or 'comment-to-code'"}
 
     ts = req.timestamp or datetime.now(timezone.utc).isoformat()
-    save_rating(req.prompt, req.suggestion, req.rating, req.suggestion_type, int(req.accepted), ts)
+    save_rating(req.prefix, req.suffix, req.suggestion, req.rating, req.suggestion_type, int(req.accepted), ts)
     return {"message": "Rating saved"}
