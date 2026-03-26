@@ -146,17 +146,8 @@ async function getAssemblySuggestion(prompt) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                prompt: `
-            You are an expert RISC-V assembly assistant.
-            Continue the following RISC-V code.
-            You may generate multiple lines.
-            Do NOT repeat the input.
-            Only output valid RISC-V assembly instructions.
-
-            Code:
-            ${prompt}
-            `,
-                max_new_tokens: 120
+                prompt: prompt,
+                max_new_tokens: 50
             })
         });
 
