@@ -17,36 +17,54 @@ function activate(context) {
     context.subscriptions.push(ratingStatusBar);
 
     // Register the completion item provider for assembly language
-    vscode.languages.registerCompletionItemProvider('riscv', {
-        async provideCompletionItems(document, position, token, context) {
-            const textBefore = document.getText(new vscode.Range(new vscode.Position(position.line, 0), position));
-            
-            try {
-                const suggestion = await getAssemblySuggestion(textBefore);
+    context.subscriptions.push(
+        vscode.languages.registerInlineCompletionItemProvider('riscv', {
+            async provideInlineCompletionItems(document, position, context, token) {
 
-                
-                const completionItem = new vscode.CompletionItem(suggestion, vscode.CompletionItemKind.Snippet);
-                completionItem.insertText = suggestion;
+                const startLine = Math.max(0, position.line - 40);
 
-                completionItem.command = {
-                    command: 'rizz-v.rateSuggestion',
-                    title: 'Rate Suggestion',
-                    arguments: [textBefore, suggestion]  // Pass original prompt
-                };
+                const textBefore = document.getText(
+                    new vscode.Range(
+                        new vscode.Position(startLine, 0),
+                        position
+                    )
+                );
 
-                return [completionItem];
+                if (!textBefore.trim()) {
+                    return { items: [] };
+                }
 
-            } catch (error) {
-                // console.error('Error fetching assembly suggestion:', error);
-                const errorItem = new vscode.CompletionItem("Rizz-V not Working", vscode.CompletionItemKind.Text);
-                errorItem.insertText = '';
-                return [errorItem];
+                try {
+                    const suggestion = await debouncedSuggestion(textBefore);
+
+                    if (!suggestion || suggestion.trim() === "") {
+                        return { items: [] };
+                    }
+
+                    // Store for rating
+                    await vscode.commands.executeCommand(
+                        'rizz-v.rateSuggestion',
+                        textBefore,
+                        suggestion
+                    );
+
+                    return {
+                        items: [
+                            new vscode.InlineCompletionItem(
+                                suggestion,
+                                new vscode.Range(position, position)
+                            )
+                        ]
+                    };
+
+                } catch (error) {
+                    console.error(error);
+                    return { items: [] };
+                }
             }
+        })
+    );
 
-        }
-
-        
-    }, ' ',);
 
     context.subscriptions.push(
         vscode.commands.registerCommand('rizz-v.rateSuggestion', async (prompt, suggestion) => {
@@ -57,9 +75,16 @@ function activate(context) {
             ratingStatusBar.show();
         })
     );
-    vscode.commands.registerCommand('rizz-v.promptRating', async () => {
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('rizz-v.promptRating', async () => {
             const prompt = context.workspaceState.get('lastPrompt');
             const suggestion = context.workspaceState.get('lastSuggestion');
+
+            if (!prompt || !suggestion) {
+                vscode.window.showWarningMessage("No suggestion to rate yet.");
+                return;
+            }
 
             const rating = await vscode.window.showQuickPick(['1', '2', '3', '4', '5'], {
                 placeHolder: '⭐ Rate the suggestion (1-5)',
@@ -68,14 +93,27 @@ function activate(context) {
             if (rating) {
                 await sendRating(prompt, suggestion, parseInt(rating));
                 vscode.window.showInformationMessage('🎉 Thanks for your feedback!');
-                
                 ratingStatusBar.hide();
             }
-    });
+        })
+    );
 
     
 
 }
+
+let timeout = null;
+
+async function debouncedSuggestion(prompt) {
+    return new Promise((resolve) => {
+        clearTimeout(timeout);
+        timeout = setTimeout(async () => {
+            const result = await getAssemblySuggestion(prompt);
+            resolve(result);
+        }, 400); // 400ms delay
+    });
+}
+
 
 // Function to send the rating to your model API
 async function sendRating(prompt, suggestion, rating) {
@@ -109,8 +147,8 @@ async function getAssemblySuggestion(prompt) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 prompt: prompt,
-                max_new_tokens: 30
-            }),
+                max_new_tokens: 50
+            })
         });
 
         if (!response.ok) {
@@ -120,12 +158,14 @@ async function getAssemblySuggestion(prompt) {
 
         const data = await response.json(); // or response.json() if structured
         // remove promt that include in generated_code
-        const generatedCode = data["generated_code"];
-        const promptIndex = generatedCode.indexOf(prompt);
-        if (promptIndex !== -1) {
-            return generatedCode.slice(promptIndex + prompt.length).trim();
+        const generatedCode = data.generated_code.trim();
+
+        if (generatedCode.startsWith(prompt)) {
+            return generatedCode.substring(prompt.length).trim();
         }
-        return data["generated_code"];
+
+        return generatedCode;
+
     } catch (error) {
         console.error('Error fetching assembly suggestion:', error);
         return 'Error fetching suggestion service'; // Return error message as fallback
