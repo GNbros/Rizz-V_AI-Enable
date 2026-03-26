@@ -176,5 +176,5 @@ cython_debug/
 riscv_model
 .DS_Store
 ratings.db
-
 trained_model/
+node_modules/

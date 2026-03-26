@@ -1,5 +1,6 @@
-# Testing
--r requirements.txt
+# Testing — torch/transformers/peft are mocked in conftest.py, no need to install them
+fastapi==0.135.2
+pydantic==2.12.5
 pytest==9.0.2
 pytest-mock==3.15.1
 httpx==0.28.1
