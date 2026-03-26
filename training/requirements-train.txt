@@ -1,0 +1,4 @@
+# Training (notebook)
+-r requirements.txt
+datasets==4.8.4
+matplotlib==3.10.8
