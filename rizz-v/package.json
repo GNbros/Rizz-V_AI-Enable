@@ -14,10 +14,17 @@
   ],
   "main": "./extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "riscv",
+        "aliases": ["RISC-V Assembly", "RISC-V", "riscv"],
+        "extensions": [".s", ".S", ".asm"]
+      }
+    ],
     "commands": [
       {
-        "command": "rizz-v.helloWorld",
-        "title": "Rating"
+        "command": "rizz-v.suggestionAccepted",
+        "title": "Rizz-V: Suggestion Accepted"
       }
     ]
   },

@@ -1,181 +1,224 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 const vscode = require('vscode');
 const fetch = require('node-fetch');
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
+let debounceTimeout = null;
+let debounceResolve = null;
+let requestCounter = 0;
+let retryTimer = null;
+let extensionContext = null;
+let setConnected = null;
 
-/**	
- * @param {vscode.ExtensionContext} context
- */
 function activate(context) {
-    const ratingStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    ratingStatusBar.text = '⭐ Rate Suggestion';
-    ratingStatusBar.tooltip = 'Click to rate the last suggestion';
-    ratingStatusBar.command = 'rizz-v.promptRating';
-    context.subscriptions.push(ratingStatusBar);
+    extensionContext = context;
 
-    // Register the completion item provider for assembly language
+    // --- Status Bar ---
+    const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    context.subscriptions.push(statusBar);
+    context.subscriptions.push({ dispose: () => { if (retryTimer) clearInterval(retryTimer); } });
+
+    setConnected = (connected) => {
+        if (connected) {
+            statusBar.text = '$(circle-filled) Rizz-V Active';
+            statusBar.color = new vscode.ThemeColor('charts.green');
+            statusBar.tooltip = 'Rizz-V: Backend connected';
+            if (retryTimer) { clearInterval(retryTimer); retryTimer = null; }
+            flushRatingQueue();
+        } else {
+            statusBar.text = '$(circle-slash) Rizz-V Disconnected';
+            statusBar.color = new vscode.ThemeColor('errorForeground');
+            statusBar.tooltip = 'Rizz-V: Backend unreachable — retrying every 5s';
+            if (!retryTimer) {
+                retryTimer = setInterval(async () => {
+                    const ok = await pingBackend();
+                    if (ok) setConnected(true);
+                }, 5000);
+            }
+        }
+        statusBar.show();
+    };
+
+    setConnected(true);
+
+    // --- Inline Completion Provider ---
     context.subscriptions.push(
         vscode.languages.registerInlineCompletionItemProvider('riscv', {
-            async provideInlineCompletionItems(document, position, context, token) {
+            async provideInlineCompletionItems(document, position, ctx, token) {
+                const currentLine = document.lineAt(position.line).text.trim();
 
-                const startLine = Math.max(0, position.line - 40);
-
-                const textBefore = document.getText(
-                    new vscode.Range(
-                        new vscode.Position(startLine, 0),
-                        position
-                    )
-                );
-
-                if (!textBefore.trim()) {
+                // UC-1 alt 2a: suppress on comments (#) or assembler directives (.)
+                if (currentLine.startsWith('#') || currentLine.startsWith('.')) {
                     return { items: [] };
                 }
+
+                // prefix: lines above cursor (up to 40 lines back)
+                const startLine = Math.max(0, position.line - 40);
+                const prefix = document.getText(
+                    new vscode.Range(new vscode.Position(startLine, 0), position)
+                ).trimStart();
+
+                if (!prefix) return { items: [] };
+
+                // suffix: lines below cursor (up to 20 lines ahead)
+                const endLine = Math.min(document.lineCount - 1, position.line + 20);
+                const suffix = document.getText(
+                    new vscode.Range(position, new vscode.Position(endLine, document.lineAt(endLine).text.length))
+                ).trimEnd();
+
+                // UC-2: detect comment-to-code — previous line is a descriptive comment
+                const prevLine = position.line > 0
+                    ? document.lineAt(position.line - 1).text.trim()
+                    : '';
+                const isCommentToCode = prevLine.startsWith('#') && prevLine.length > 1;
+                const suggestionType = isCommentToCode ? 'comment-to-code' : 'realtime';
+                const maxTokens = isCommentToCode ? 150 : 50;
+
+                // Stale request detection: discard response if user kept typing
+                const myId = ++requestCounter;
 
                 try {
-                    const suggestion = await debouncedSuggestion(textBefore);
+                    const suggestion = await debouncedSuggestion(prefix, suffix, maxTokens);
 
-                    if (!suggestion || suggestion.trim() === "") {
-                        return { items: [] };
-                    }
+                    if (requestCounter !== myId) return { items: [] };
+                    if (!suggestion || suggestion.trim() === '') return { items: [] };
 
-                    // Store for rating
-                    await vscode.commands.executeCommand(
-                        'rizz-v.rateSuggestion',
-                        textBefore,
-                        suggestion
+                    const lineNumber = position.line + 1;
+                    const item = new vscode.InlineCompletionItem(
+                        suggestion,
+                        new vscode.Range(position, position)
                     );
-
-                    return {
-                        items: [
-                            new vscode.InlineCompletionItem(
-                                suggestion,
-                                new vscode.Range(position, position)
-                            )
-                        ]
+                    item.command = {
+                        command: 'rizz-v.suggestionAccepted',
+                        title: 'Suggestion Accepted',
+                        arguments: [prefix, suffix, suggestion, lineNumber, suggestionType]
                     };
 
+                    return { items: [item] };
+
                 } catch (error) {
-                    console.error(error);
+                    console.error('Rizz-V:', error);
+                    setConnected(false);
                     return { items: [] };
                 }
             }
         })
     );
 
-
+    // --- Accept Command ---
     context.subscriptions.push(
-        vscode.commands.registerCommand('rizz-v.rateSuggestion', async (prompt, suggestion) => {
-            // Store values in global state or context
-            context.workspaceState.update('lastPrompt', prompt);
-            context.workspaceState.update('lastSuggestion', suggestion);
+        vscode.commands.registerCommand(
+            'rizz-v.suggestionAccepted',
+            async (prefix, suffix, suggestion, lineNumber, suggestionType) => {
+                const choice = await vscode.window.showInformationMessage(
+                    `Rizz-V suggestion accepted on line ${lineNumber} — Was this helpful?`,
+                    '👍 Helpful',
+                    '👎 Not helpful'
+                );
 
-            ratingStatusBar.show();
-        })
-    );
+                const rating = choice === '👍 Helpful' ? 1 : choice === '👎 Not helpful' ? 0 : null;
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('rizz-v.promptRating', async () => {
-            const prompt = context.workspaceState.get('lastPrompt');
-            const suggestion = context.workspaceState.get('lastSuggestion');
+                queueRating({
+                    prefix,
+                    suffix,
+                    suggestion,
+                    suggestion_type: suggestionType,
+                    accepted: true,
+                    rating,
+                    timestamp: new Date().toISOString()
+                });
 
-            if (!prompt || !suggestion) {
-                vscode.window.showWarningMessage("No suggestion to rate yet.");
-                return;
+                if (rating !== null) {
+                    vscode.window.showInformationMessage('Thanks for your feedback!');
+                }
             }
-
-            const rating = await vscode.window.showQuickPick(['1', '2', '3', '4', '5'], {
-                placeHolder: '⭐ Rate the suggestion (1-5)',
-            });
-
-            if (rating) {
-                await sendRating(prompt, suggestion, parseInt(rating));
-                vscode.window.showInformationMessage('🎉 Thanks for your feedback!');
-                ratingStatusBar.hide();
-            }
-        })
+        )
     );
-
-    
-
 }
 
-let timeout = null;
+// --- Rating Queue (local storage + backend sync) ---
 
-async function debouncedSuggestion(prompt) {
-    return new Promise((resolve) => {
-        clearTimeout(timeout);
-        timeout = setTimeout(async () => {
-            const result = await getAssemblySuggestion(prompt);
-            resolve(result);
-        }, 400); // 400ms delay
+function queueRating(data) {
+    sendRatingToBackend(data).catch(() => {
+        // UC-3 exc 8a: backend unreachable — store locally and retry when reconnected
+        const queue = extensionContext.globalState.get('ratingQueue', []);
+        queue.push(data);
+        extensionContext.globalState.update('ratingQueue', queue);
     });
 }
 
-
-// Function to send the rating to your model API
-async function sendRating(prompt, suggestion, rating) {
-    try {
-        const response = await fetch('http://127.0.0.1:8000/rating', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                prompt: prompt,
-                suggestion: suggestion,
-                rating: rating }),
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to submit rating. Status: ${response.status}`);
+async function flushRatingQueue() {
+    const queue = extensionContext.globalState.get('ratingQueue', []);
+    if (queue.length === 0) return;
+    const failed = [];
+    for (const item of queue) {
+        try {
+            await sendRatingToBackend(item);
+        } catch {
+            failed.push(item);
         }
+    }
+    extensionContext.globalState.update('ratingQueue', failed);
+}
 
-        console.log('Rating submitted successfully.');
-    } catch (error) {
-        console.error('Error submitting rating:', error);
+async function sendRatingToBackend(data) {
+    const response = await fetch('http://127.0.0.1:8000/rating', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+}
+
+async function pingBackend() {
+    try {
+        const res = await fetch('http://127.0.0.1:8000/');
+        return res.ok;
+    } catch {
+        return false;
     }
 }
 
+// --- Debounce ---
 
-// Function to get assembly code suggestions from your model API
-async function getAssemblySuggestion(prompt) {
-    try {
-        console.log('Sending request with prompt:', prompt);
-        const response = await fetch('http://127.0.0.1:8000/generate', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                prompt: prompt,
-                max_new_tokens: 50
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        // Assuming the response is JSON and contains a field "generated_code"
-
-        const data = await response.json(); // or response.json() if structured
-        // remove promt that include in generated_code
-        const generatedCode = data.generated_code.trim();
-
-        if (generatedCode.startsWith(prompt)) {
-            return generatedCode.substring(prompt.length).trim();
-        }
-
-        return generatedCode;
-
-    } catch (error) {
-        console.error('Error fetching assembly suggestion:', error);
-        return 'Error fetching suggestion service'; // Return error message as fallback
+function debouncedSuggestion(prefix, suffix, maxTokens) {
+    // Resolve the previous hanging promise immediately so it doesn't leak
+    if (debounceResolve) {
+        debounceResolve(null);
+        debounceResolve = null;
     }
+    clearTimeout(debounceTimeout);
+
+    return new Promise((resolve, reject) => {
+        debounceResolve = resolve;
+        debounceTimeout = setTimeout(async () => {
+            debounceResolve = null;
+            try {
+                resolve(await getAssemblySuggestion(prefix, suffix, maxTokens));
+            } catch (e) {
+                reject(e);
+            }
+        }, 500);
+    });
 }
 
-// This method is called when your extension is deactivated
+// --- API ---
+
+async function getAssemblySuggestion(prefix, suffix = '', maxTokens = 50) {
+    const response = await fetch('http://127.0.0.1:8000/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prefix, suffix, max_new_tokens: maxTokens })
+    });
+
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+    const data = await response.json();
+    const generatedCode = data.generated_code.trim();
+    if (generatedCode.startsWith(prefix)) {
+        return generatedCode.substring(prefix.length).trim();
+    }
+    return generatedCode;
+}
+
 function deactivate() {}
 
-module.exports = {
-    activate,
-    deactivate
-}
+module.exports = { activate, deactivate };
