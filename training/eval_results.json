@@ -1,0 +1,13 @@
+{
+  "model": "Salesforce/codegen-350M-multi",
+  "adapter": "../trained_model/final_model",
+  "dataset": "./dataset/v1/fim/test.jsonl",
+  "num_samples": 200,
+  "metrics": {
+    "exact_match_pct": 0.0,
+    "prefix_match_pct": 22.5,
+    "bleu": 47.03,
+    "avg_perplexity": 1.4912,
+    "ppl_sample_size": 199
+  }
+}

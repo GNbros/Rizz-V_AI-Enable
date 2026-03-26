@@ -1,30 +1,29 @@
 """
-conftest.py — shared fixtures and model mocking.
+conftest.py
 
-The ML stack (torch / transformers / peft) is replaced with MagicMocks
-before `main` is imported, so no trained-model files are needed to run tests.
+Stubs out the ML stack so tests run without model files or a GPU.
+Uses FastAPI dependency_overrides — no monkeypatching of module globals.
 """
 
 import sys
 from unittest.mock import MagicMock
+from typing import Optional
 
 import pytest
+from fastapi.testclient import TestClient
 
 # ---------------------------------------------------------------------------
-# 1. Stub out the ML dependencies BEFORE importing main
+# Mock heavy ML deps BEFORE any app code is imported
 # ---------------------------------------------------------------------------
-
 _torch = MagicMock()
 _torch.cuda.is_available.return_value = False
 _torch.backends.mps.is_available.return_value = False
 _torch.float32 = "float32"
 _torch.float16 = "float16"
-
-# Make `with torch.no_grad():` work as a context manager
-_no_grad_ctx = MagicMock()
-_no_grad_ctx.__enter__ = MagicMock(return_value=None)
-_no_grad_ctx.__exit__ = MagicMock(return_value=False)
-_torch.no_grad.return_value = _no_grad_ctx
+_no_grad = MagicMock()
+_no_grad.__enter__ = MagicMock(return_value=None)
+_no_grad.__exit__ = MagicMock(return_value=False)
+_torch.no_grad.return_value = _no_grad
 
 sys.modules.setdefault("torch", _torch)
 sys.modules.setdefault("torch.backends", _torch.backends)
@@ -33,35 +32,71 @@ sys.modules.setdefault("transformers", MagicMock())
 sys.modules.setdefault("peft", MagicMock())
 
 # ---------------------------------------------------------------------------
-# 2. Now import main (load_model runs but uses mocked objects)
+# Import app code after mocks are in place
+# ---------------------------------------------------------------------------
+from app.main import create_app                          # noqa: E402
+from app.config import Settings                          # noqa: E402
+from app.dependencies import get_model_service, get_repository  # noqa: E402
+from app.services.model_service import ModelService      # noqa: E402
+from app.db.repository import RatingRepository, RatingEntry  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# Fake services
 # ---------------------------------------------------------------------------
 
-import main as _main  # noqa: E402
+class FakeModelService:
+    """Returns predictable completions — no model files needed."""
+    version = "test-v1"
 
-from fastapi.testclient import TestClient  # noqa: E402
+    def __init__(self):
+        self.settings = Settings(
+            base_model_name="fake-model",
+            adapter_path="fake-adapter",
+            model_version="test-v1",
+        )
 
+    def load(self) -> None:
+        pass
 
-# ---------------------------------------------------------------------------
-# 3. Shared fixtures
-# ---------------------------------------------------------------------------
-
-@pytest.fixture(scope="session")
-def client():
-    return TestClient(_main.app)
-
-
-@pytest.fixture(autouse=True)
-def isolated_db(tmp_path, monkeypatch):
-    """Each test gets a fresh SQLite database — never touches ratings.db."""
-    db_path = str(tmp_path / "test_ratings.db")
-    monkeypatch.setattr(_main, "DB_PATH", db_path)
-    _main.init_db()
-
-
-@pytest.fixture(autouse=True)
-def mock_inference(monkeypatch):
-    """Replace complete_code with a fast, predictable stub."""
-    def _fake_complete(model, tokenizer, prompt, max_new_tokens=50):
+    def complete(self, prefix: str, suffix: str, max_new_tokens: int) -> str:
         return "addi t0, t0, 1"
 
-    monkeypatch.setattr(_main, "complete_code", _fake_complete)
+
+class FakeRatingRepository:
+    """In-memory store — no SQLite file needed."""
+
+    def __init__(self):
+        self._store: list[RatingEntry] = []
+
+    def init_db(self) -> None:
+        pass
+
+    def save(self, entry: RatingEntry) -> None:
+        self._store.append(entry)
+
+    def find_all(self) -> list[RatingEntry]:
+        return list(self._store)
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def fake_repository():
+    return FakeRatingRepository()
+
+
+@pytest.fixture
+def app(fake_repository):
+    application = create_app(settings=Settings(db_path=":memory:"))
+    application.dependency_overrides[get_model_service] = lambda: FakeModelService()
+    application.dependency_overrides[get_repository] = lambda: fake_repository
+    return application
+
+
+@pytest.fixture
+def client(app):
+    with TestClient(app) as c:
+        yield c
