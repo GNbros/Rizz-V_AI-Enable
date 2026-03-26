@@ -8,7 +8,7 @@ on:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Job 1: Python backend tests (no model files needed — fully mocked)
+  # Job 1: Python backend tests (torch/transformers/peft are mocked — fast)
   # ---------------------------------------------------------------------------
   backend-tests:
     name: Backend API Tests
@@ -30,7 +30,7 @@ jobs:
         run: pytest tests/ -v --tb=short
 
   # ---------------------------------------------------------------------------
-  # Job 2: VS Code extension tests (needs Xvfb for headless VS Code on Linux)
+  # Job 2: VS Code extension tests (Xvfb provides virtual display for VS Code)
   # ---------------------------------------------------------------------------
   extension-tests:
     name: Extension Tests
@@ -47,7 +47,7 @@ jobs:
 
       - name: Install extension dependencies
         working-directory: rizz-v
-        run: npm install
+        run: npm ci
 
       - name: Install Xvfb (virtual display for headless VS Code)
         run: sudo apt-get install -y xvfb
@@ -55,3 +55,4 @@ jobs:
       - name: Run extension tests
         working-directory: rizz-v
         run: xvfb-run -a npm test
+        timeout-minutes: 10
